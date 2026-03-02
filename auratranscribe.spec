@@ -10,8 +10,8 @@ a = Analysis(
     pathex=[],
     binaries=[],
     datas=[
-        ('frontend', 'frontend'),          # Bundle entire frontend
-        (ffmpeg_path, 'static_ffmpeg/bin'), # Bundle ffmpeg binaries
+        ('frontend', 'frontend'),
+        (ffmpeg_path, 'static_ffmpeg/bin'),
     ],
     hiddenimports=[
         'uvicorn.logging',
@@ -26,6 +26,10 @@ a = Analysis(
         'uvicorn.lifespan.on',
         'faster_whisper',
         'ctranslate2',
+        'av',
+        'av._core',
+        'av.audio',
+        'av.video',
     ],
     hookspath=[],
     runtime_hooks=[],
@@ -45,8 +49,8 @@ exe = EXE(
     bootloader_ignore_signals=False,
     strip=False,
     upx=True,
-    console=False,  # No terminal window
-    icon='frontend/assets/icon.ico',  # Add an .ico file
+    console=True,
+    icon='frontend/assets/icon.ico',
 )
 
 coll = COLLECT(

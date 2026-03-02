@@ -155,7 +155,7 @@ document.addEventListener("DOMContentLoaded", () => {
         const pBatch = ((data.batch_current - 1) / data.batch_total) * 100;
         batchProgressBar.style.width = `${pBatch}%`;
 
-        const filesLabel = window.i18n.t("export_count_suffix").split(" ")[0]; // Just "files" or "archivos"
+        const filesLabel = window.i18n.t("export_count_suffix").split(" ")[0];
         batchProgressText.innerText = `${data.batch_current} / ${data.batch_total} ${filesLabel}`;
 
         currentFileLabel.innerText = `${window.i18n.t("processing_transcribing")} ${data.batch_current}...`;
@@ -212,66 +212,64 @@ document.addEventListener("DOMContentLoaded", () => {
 
     btnExport.addEventListener("click", async () => {
         const modeInput = document.getElementById("export-mode-input").value;
-        const totalToExport = completedJobIds.length;
-        let successCount = 0;
 
         try {
+            btnExport.disabled = true;
+
             if (modeInput === "separate") {
-                for (let i = 0; i < totalToExport; i++) {
-                    const jobId = completedJobIds[i];
-                    const filename = completedFilenames[i].replace(/\.[^/.]+$/, "") + ".txt";
+                // Export each file separately
+                const res = await fetch("/api/export/batch", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        job_ids: completedJobIds,
+                        mode: "separate"
+                    })
+                });
 
-                    const pickerRes = await fetch(`/api/ui/save_dialog?filename=${encodeURIComponent(filename)}`);
-                    const pickerData = await pickerRes.json();
+                if (!res.ok) throw new Error("Export failed");
+                const result = await res.json();
 
-                    if (pickerData.path) {
-                        const exportRes = await fetch(`/api/export/single?job_id=${jobId}&target_path=${encodeURIComponent(pickerData.path)}`, {
-                            method: "POST"
-                        });
-                        if (exportRes.ok) successCount++;
-                    }
-                    // Delay between dialogs
-                    await new Promise(r => setTimeout(r, 400));
-                }
-            } else {
-                const dateStr = new Date().toISOString().split('T')[0];
-                const defaultName = `auratranscribe_batch_${dateStr}.txt`;
-
-                const pickerRes = await fetch(`/api/ui/save_dialog?filename=${encodeURIComponent(defaultName)}`);
-                const pickerData = await pickerRes.json();
-
-                if (pickerData.path) {
-                    const res = await fetch("/api/export/batch", {
-                        method: "POST",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({
-                            job_ids: completedJobIds,
-                            mode: "merged",
-                            target_path: pickerData.path
-                        })
-                    });
-                    if (res.ok) successCount = 1;
-                }
-            }
-
-            if (successCount > 0) {
-                exportSuccessMsg.innerText = modeInput === "separate"
-                    ? window.i18n.t("export_success_count", { count: successCount })
-                    : window.i18n.t("export_success_batch");
+                exportSuccessMsg.innerText = window.i18n.t("export_success_count", { count: result.files.length });
                 exportSuccessMsg.classList.remove("hidden");
-                setTimeout(() => exportSuccessMsg.classList.add("hidden"), 5000);
+
+                // Open the export folder
+                await fetch("/api/export/open_folder");
+
+            } else {
+                // Merged export
+                const res = await fetch("/api/export/batch", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        job_ids: completedJobIds,
+                        mode: "merged"
+                    })
+                });
+
+                if (!res.ok) throw new Error("Export failed");
+                const result = await res.json();
+
+                exportSuccessMsg.innerText = window.i18n.t("export_success_batch");
+                exportSuccessMsg.classList.remove("hidden");
+
+                // Open the export folder
+                await fetch("/api/export/open_folder");
             }
+
+            setTimeout(() => exportSuccessMsg.classList.add("hidden"), 5000);
 
         } catch (e) {
             console.error(e);
             alert("Failed to export files.");
+        } finally {
+            btnExport.disabled = false;
         }
     });
 
     // -- Language Sync --
     window.addEventListener("languageChanged", (e) => {
         const lang = e.detail;
-        // Sync audio language selector with UI language if it's one of the primary ones
         if (lang === "es" || lang === "en") {
             if (window.audioLangDropdown) {
                 window.audioLangDropdown.setValue(lang);

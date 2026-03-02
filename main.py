@@ -3,7 +3,6 @@ import os
 import subprocess
 import signal
 import uvicorn
-import webview
 import threading
 import logging
 import time
@@ -40,13 +39,45 @@ def kill_process_on_port(port: int):
             if f"127.0.0.1:{port}" in line and "LISTENING" in line:
                 parts = line.split()
                 pid = int(parts[-1])
-                # Don't kill ourselves
                 if pid != os.getpid():
                     logger.info(f"Killing stale process on port {port} (PID {pid})")
                     os.kill(pid, signal.SIGTERM)
                     time.sleep(0.5)
     except Exception as e:
         logger.warning(f"Could not clean port {port}: {e}")
+
+
+def open_app_window(url):
+    """
+    Open URL in a Chromium app window (no address bar, looks like a native app).
+    Tries Edge first (pre-installed on all Windows 10/11), then Chrome, then default browser.
+    """
+    # Try Edge first — available on all Windows 10/11
+    edge_paths = [
+        r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe",
+        r"C:\Program Files\Microsoft\Edge\Application\msedge.exe",
+    ]
+    for edge in edge_paths:
+        if os.path.exists(edge):
+            subprocess.Popen([edge, f"--app={url}", "--new-window"])
+            logger.info("Opened app window with Edge")
+            return
+
+    # Try Chrome
+    chrome_paths = [
+        r"C:\Program Files\Google\Chrome\Application\chrome.exe",
+        r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe",
+    ]
+    for chrome in chrome_paths:
+        if os.path.exists(chrome):
+            subprocess.Popen([chrome, f"--app={url}", "--new-window"])
+            logger.info("Opened app window with Chrome")
+            return
+
+    # Fallback: default browser (will have address bar, but works)
+    import webbrowser
+    webbrowser.open(url)
+    logger.info("Opened app in default browser (fallback)")
 
 
 app = FastAPI(title="AuraTranscribe API")
@@ -76,6 +107,7 @@ def run_server():
     _server = uvicorn.Server(config)
     _server.run()
 
+
 if __name__ == "__main__":
     import multiprocessing
     multiprocessing.freeze_support()
@@ -90,27 +122,24 @@ if __name__ == "__main__":
     server_thread = threading.Thread(target=run_server, daemon=True)
     server_thread.start()
 
-    # Wait briefly to let the uvicorn server bind to the port
-    time.sleep(1)
+    # Wait for server to be ready
+    time.sleep(1.5)
 
-    # Create pywebview window
-    core.globals.webview_window = webview.create_window(
-        title="AuraTranscribe",
-        url=f"http://127.0.0.1:{FASTAPI_PORT}",
-        width=900,
-        height=660,
-        min_size=(800, 600),
-        background_color="#080808"
-    )
+    # Open the app in a chromium window (no address bar)
+    app_url = f"http://127.0.0.1:{FASTAPI_PORT}"
+    open_app_window(app_url)
 
-    # Run the window on the main thread (blocks until window is closed)
-    webview.start(debug=False)
+    logger.info(f"AuraTranscribe running at {app_url}")
+    logger.info("Close this window or press Ctrl+C to stop.")
 
-    # -- Window closed: clean shutdown --
-    logger.info("Window closed. Shutting down server...")
+    # Keep the server alive until user stops it
+    try:
+        while True:
+            time.sleep(1)
+    except KeyboardInterrupt:
+        logger.info("Shutting down...")
+
     if _server:
         _server.should_exit = True
-
-    # Give the server a moment to finish, then force exit
     time.sleep(1)
     os._exit(0)
