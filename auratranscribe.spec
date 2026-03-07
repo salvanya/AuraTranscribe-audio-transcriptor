@@ -1,14 +1,22 @@
 # auratranscribe.spec
 import static_ffmpeg
 import os
+import sys
 
 # Get static-ffmpeg binary paths
 ffmpeg_path = os.path.join(os.path.dirname(static_ffmpeg.__file__), "bin")
 
+# Anaconda stores some DLLs outside the venv; bundle them explicitly
+anaconda_bin = os.path.join(sys.base_prefix, "Library", "bin")
+
 a = Analysis(
     ['main.py'],
     pathex=[],
-    binaries=[],
+    binaries=[
+        (os.path.join(anaconda_bin, 'ffi.dll'), '.'),
+        (os.path.join(anaconda_bin, 'libbz2.dll'), '.'),
+        (os.path.join(anaconda_bin, 'sqlite3.dll'), '.'),
+    ],
     datas=[
         ('frontend', 'frontend'),
         (ffmpeg_path, 'static_ffmpeg/bin'),
@@ -49,7 +57,7 @@ exe = EXE(
     bootloader_ignore_signals=False,
     strip=False,
     upx=True,
-    console=True,
+    console=False,
     icon='frontend/assets/icon.ico',
 )
 

@@ -13,7 +13,7 @@ from rich.logging import RichHandler
 
 from api.router import api_router
 import core.globals
-from config import FASTAPI_PORT
+from config import FASTAPI_PORT, LOG_FILE
 
 # -- Path resolution for PyInstaller bundled mode --
 if getattr(sys, 'frozen', False):
@@ -21,11 +21,23 @@ if getattr(sys, 'frozen', False):
 else:
     FRONTEND_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'frontend')
 
-# Basic logging setup
+# -- Logging setup --
+# When running as console=False exe, stdout/stderr are None which crashes RichHandler.
+# In that case, log to a file instead.
 FORMAT = "%(message)s"
-logging.basicConfig(
-    level="INFO", format=FORMAT, datefmt="[%X]", handlers=[RichHandler()]
-)
+if sys.stderr is None:
+    # Redirect stdout/stderr to devnull so libraries don't crash on print()
+    sys.stdout = open(os.devnull, "w")
+    sys.stderr = open(os.devnull, "w")
+    LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
+    logging.basicConfig(
+        level="INFO", format="%(asctime)s %(levelname)s %(message)s",
+        handlers=[logging.FileHandler(LOG_FILE, encoding="utf-8")]
+    )
+else:
+    logging.basicConfig(
+        level="INFO", format=FORMAT, datefmt="[%X]", handlers=[RichHandler()]
+    )
 logger = logging.getLogger(__name__)
 
 
@@ -68,6 +80,17 @@ async def disable_frontend_cache(request, call_next):
         response.headers["Expires"] = "0"
     return response
 
+
+@app.post("/api/shutdown")
+async def shutdown():
+    """Shutdown the server when the browser tab is closed."""
+    logger.info("Shutdown requested — exiting in 1 second...")
+    threading.Thread(target=_delayed_exit, daemon=True).start()
+    return {"status": "shutting_down"}
+
+def _delayed_exit():
+    time.sleep(1)
+    os._exit(0)
 
 @app.get("/api/debug/runtime_source")
 async def debug_runtime_source():
@@ -131,8 +154,14 @@ if __name__ == "__main__":
     server_thread = threading.Thread(target=run_server, daemon=True)
     server_thread.start()
 
-    # Wait for server to be ready
-    time.sleep(1.5)
+    # Wait for server to be ready (poll instead of fixed sleep)
+    import urllib.request
+    for _ in range(30):
+        try:
+            urllib.request.urlopen(f"http://127.0.0.1:{FASTAPI_PORT}/api/model/status", timeout=1)
+            break
+        except Exception:
+            time.sleep(0.5)
 
     # Open the app in a normal browser tab
     app_url = f"http://127.0.0.1:{FASTAPI_PORT}"

@@ -40,7 +40,7 @@ async def websocket_progress(websocket: WebSocket):
             # We don't expect messages from client, but we wait to detect disconnects
             await websocket.receive_text()
     except WebSocketDisconnect:
-        self.disconnect(websocket)
+        ws_manager.disconnect(websocket)
     except Exception as e:
         logger.error(f"WebSocket error: {e}")
         ws_manager.disconnect(websocket)

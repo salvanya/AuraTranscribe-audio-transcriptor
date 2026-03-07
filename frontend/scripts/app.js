@@ -111,3 +111,8 @@ document.addEventListener("DOMContentLoaded", async () => {
         }
     });
 });
+
+// Shut down the backend server when the user closes the browser tab
+window.addEventListener("beforeunload", () => {
+    navigator.sendBeacon("/api/shutdown");
+});
